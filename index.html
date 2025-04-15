@@ -36,7 +36,6 @@
             width: 100%;
             max-width: 400px;
             text-align: center;
-            backdrop-filter: blur(5px);
         }
 
         h1 {
@@ -62,19 +61,21 @@
         }
 
         .timer .bg-circle {
-            stroke: rgba(0, 0, 0, 0.1);
+            stroke: rgba(0, 0, 0, 0.05);
             stroke-width: 2;
             fill: none;
         }
 
-        .timer .progress-circle {
+        .timer .progress-wave {
             stroke: var(--primary);
-            stroke-width: 4;
+            stroke-width: 2;
             fill: none;
             stroke-linecap: round;
             stroke-dasharray: 283;
             stroke-dashoffset: 283;
-            transform-origin: 50% 50%;
+            transform: rotate(-90deg);
+            transform-origin: center;
+            transition: stroke-dashoffset 1s linear;
         }
 
         .timer-display {
@@ -117,40 +118,17 @@
 
         button:hover {
             background-color: var(--primary-dark);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
-        }
-
-        button:active {
-            transform: translateY(0);
         }
 
         button:disabled {
             background-color: #B0BEC5;
             cursor: not-allowed;
-            transform: none;
-            box-shadow: none;
         }
 
         .session-count {
             margin-top: 25px;
             font-size: 0.9rem;
             color: #78909C;
-        }
-
-        @media (max-width: 480px) {
-            .container {
-                padding: 30px 20px;
-            }
-
-            .timer {
-                width: 240px;
-                height: 240px;
-            }
-
-            .timer-display {
-                font-size: 3rem;
-            }
         }
     </style>
 </head>
@@ -160,7 +138,7 @@
         <div class="timer">
             <svg viewBox="0 0 100 100">
                 <circle class="bg-circle" cx="50" cy="50" r="45"></circle>
-                <circle class="progress-circle" cx="50" cy="50" r="45" id="progress-circle"></circle>
+                <circle class="progress-wave" cx="50" cy="50" r="45"></circle>
             </svg>
             <div class="timer-display" id="timer-display">25:00</div>
         </div>
@@ -173,29 +151,49 @@
     </div>
 
     <script>
-        const WORK_TIME = 25 * 60;
-        const startSound = new Audio('pomodoro.mp3');
-        const endSound = new Audio('end.mp3');
+        const WORK_TIME = 25 * 60; // 25 minutes
+        const SHORT_BREAK = 5 * 60; // 5 minutes
+        const LONG_BREAK = 15 * 60; // 15 minutes
+
         let timer;
         let timeLeft = WORK_TIME;
         let isRunning = false;
-        let startTime;
-        let elapsedTime = 0;
+        let sessionCount = 0;
+        let isBreak = false;
 
         const timerDisplay = document.getElementById("timer-display");
-        const progressCircle = document.getElementById("progress-circle");
+        const status = document.getElementById("status");
         const startBtn = document.getElementById("start-btn");
         const resetBtn = document.getElementById("reset-btn");
+        const sessionCountDisplay = document.getElementById("session-count");
+        const progressWave = document.querySelector(".progress-wave");
+
+        const startSound = new Audio("pomodoro.mp3");
+        const endSound = new Audio("end.mp3");
 
         function updateTimerDisplay() {
             const minutes = Math.floor(timeLeft / 60);
             const seconds = timeLeft % 60;
-            timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            timerDisplay.textContent = `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+
+            const progress = (1 - timeLeft / (isBreak ? (sessionCount % 4 === 0 ? LONG_BREAK : SHORT_BREAK) : WORK_TIME)) * 283;
+            progressWave.style.strokeDashoffset = progress;
         }
 
-        function updateProgress() {
-            const progress = (1 - timeLeft / WORK_TIME) * 283;
-            progressCircle.style.strokeDashoffset = progress;
+        document.addEventListener("DOMContentLoaded", () => {
+            if (Notification.permission === "default") {
+                Notification.requestPermission().then(permission => {
+                    if (permission !== "granted") {
+                        alert("Enable notifications to stay updated!");
+                    }
+                });
+            }
+        });
+
+        function showNotification(title, body) {
+            if (Notification.permission === "granted") {
+                new Notification(title, { body });
+            }
         }
 
         function startTimer() {
@@ -205,50 +203,57 @@
             startBtn.disabled = true;
             resetBtn.disabled = false;
 
-            startTime = Date.now() - elapsedTime * 1000;
+            startSound.play().catch(e => console.log("Sound play failed:", e));
 
-            // Play start sound
-            startSound.play().catch(console.error);
-
-            function tick() {
-                if (!isRunning) return;
-
-                const now = Date.now();
-                elapsedTime = Math.floor((now - startTime) / 1000);
-                timeLeft = Math.max(WORK_TIME - elapsedTime, 0);
-
-                updateTimerDisplay();
-                updateProgress();
-
+            timer = setInterval(() => {
                 if (timeLeft > 0) {
-                    requestAnimationFrame(tick);
+                    timeLeft--;
+                    updateTimerDisplay();
                 } else {
+                    clearInterval(timer);
                     isRunning = false;
-                    startBtn.disabled = false;
 
-                    // Play end sound
-                    endSound.play().catch(console.error);
+                    endSound.play().catch(e => console.log("Sound play failed:", e));
+
+                    if (isBreak) {
+                        isBreak = false;
+                        timeLeft = WORK_TIME;
+                        status.textContent = "Focus Time";
+                        showNotification("Break Over", "Time to get back to work!");
+                    } else {
+                        sessionCount++;
+                        sessionCountDisplay.textContent = `Sessions completed: ${sessionCount}`;
+                        isBreak = true;
+                        timeLeft = sessionCount % 4 === 0 ? LONG_BREAK : SHORT_BREAK;
+                        status.textContent = sessionCount % 4 === 0 ? "Long Break" : "Short Break";
+                        showNotification(
+                            "Focus Over",
+                            sessionCount % 4 === 0 ? "Enjoy a long break!" : "Take a short break!"
+                        );
+                    }
+
+                    updateTimerDisplay();
                 }
-            }
-
-            requestAnimationFrame(tick);
+            }, 1000);
         }
 
         function resetTimer() {
+            clearInterval(timer);
             isRunning = false;
             timeLeft = WORK_TIME;
-            elapsedTime = 0;
+            sessionCount = 0;
+            isBreak = false;
+            status.textContent = "Ready to Focus";
+            sessionCountDisplay.textContent = "Sessions completed: 0";
             startBtn.disabled = false;
             resetBtn.disabled = true;
             updateTimerDisplay();
-            updateProgress();
         }
 
         startBtn.addEventListener("click", startTimer);
         resetBtn.addEventListener("click", resetTimer);
 
         updateTimerDisplay();
-        updateProgress();
     </script>
 </body>
 </html>
