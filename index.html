@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flow Pomodoro</title>
+    <style>
+        :root {
+            --primary: #5D9CEC;
+            --primary-light: #8EB9F5;
+            --primary-dark: #3A7BD5;
+            --urgent: #FF6B6B;
+            --background: #F5F7FA;
+            --text: #2C3E50;
+        }
+        
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #E0F7FA 0%, #B2EBF2 50%, #80DEEA 100%);
+            color: var(--text);
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .container {
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 28px;
+            padding: 40px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+            backdrop-filter: blur(5px);
+        }
+
+        h1 {
+            margin: 0 0 20px;
+            font-weight: 300;
+            color: var(--primary-dark);
+            font-size: 1.8rem;
+        }
+
+        .timer {
+            position: relative;
+            width: 280px;
+            height: 280px;
+            margin: 0 auto 30px;
+        }
+
+        .timer svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .timer .bg-circle {
+            stroke: rgba(0, 0, 0, 0.05);
+            stroke-width: 2;
+            fill: none;
+        }
+
+        .timer .progress-container {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            transform: rotate(-90deg);
+            animation: rotate 60s linear infinite;
+            animation-play-state: paused;
+        }
+
+        .timer .progress-wave {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            stroke: var(--primary);
+            stroke-width: 4;
+            fill: none;
+            stroke-linecap: round;
+            stroke-dasharray: 760;
+            stroke-dashoffset: 760;
+            filter: url(#wave-filter);
+        }
+
+        .timer-display {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 3.5rem;
+            font-weight: 300;
+            color: var(--text);
+            width: 100%;
+        }
+
+        .status {
+            font-size: 1.2rem;
+            margin-bottom: 30px;
+            color: var(--primary-dark);
+            font-weight: 500;
+            min-height: 24px;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        button {
+            padding: 12px 28px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 50px;
+            color: white;
+            background-color: var(--primary);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        button:hover {
+            background-color: var(--primary-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            background-color: #B0BEC5;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .session-count {
+            margin-top: 25px;
+            font-size: 0.9rem;
+            color: #78909C;
+        }
+
+        @keyframes rotate {
+            from { transform: rotate(-90deg); }
+            to { transform: rotate(270deg); }
+        }
+
+        @keyframes pulse {
+            from { opacity: 1; }
+            to { opacity: 0.8; }
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 30px 20px;
+            }
+            
+            .timer {
+                width: 240px;
+                height: 240px;
+            }
+            
+            .timer-display {
+                font-size: 3rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Flow Pomodoro</h1>
+        <div class="timer">
+            <svg viewBox="0 0 100 100" style="overflow: visible;">
+                <defs>
+                    <filter id="wave-filter" x="-20%" y="-20%" width="140%" height="140%">
+                        <feTurbulence type="fractalNoise" baseFrequency="0.02 0.1" numOctaves="2" result="wavy"/>
+                        <feDisplacementMap in="SourceGraphic" in2="wavy" scale="2" xChannelSelector="R" yChannelSelector="G"/>
+                    </filter>
+                </defs>
+                <circle class="bg-circle" cx="50" cy="50" r="45" />
+            </svg>
+            <div class="progress-container" id="progress-container">
+                <svg viewBox="0 0 100 100">
+                    <path class="progress-wave" d="M50,5 
+                        A45,45 0 0,1 95,50 
+                        A45,45 0 0,1 50,95 
+                        A45,45 0 0,1 5,50 
+                        A45,45 0 0,1 50,5" />
+                </svg>
+            </div>
+            <div class="timer-display" id="timer-display">25:00</div>
+        </div>
+        <div class="status" id="status">Ready to Focus</div>
+        <div class="controls">
+            <button id="start-btn">Start</button>
+            <button id="reset-btn" disabled>Reset</button>
+        </div>
+        <div class="session-count" id="session-count">Sessions completed: 0</div>
+    </div>
+
+    <script>
+        const WORK_TIME = 25 * 60;
+        const SHORT_BREAK = 5 * 60;
+        const LONG_BREAK = 15 * 60;
+
+        let timer;
+        let timeLeft = WORK_TIME;
+        let isRunning = false;
+        let sessionsCompleted = 0;
+        const timerDisplay = document.getElementById("timer-display");
+        const status = document.getElementById("status");
+        const startBtn = document.getElementById("start-btn");
+        const resetBtn = document.getElementById("reset-btn");
+        const sessionCount = document.getElementById("session-count");
+        const progressWave = document.querySelector(".progress-wave");
+        const progressContainer = document.getElementById("progress-container");
+        const totalPathLength = 760;
+
+        // Audio for notifications
+        const startSound = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-alarm-digital-clock-beep-989.mp3');
+        const endSound = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-positive-interface-beep-221.mp3');
+
+        function updateTimerDisplay() {
+            const minutes = Math.floor(timeLeft / 60);
+            const seconds = timeLeft % 60;
+            timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            
+            if (isRunning) {
+                timerDisplay.style.animation = 'pulse 1s infinite alternate';
+            } else {
+                timerDisplay.style.animation = 'none';
+            }
+        }
+
+        function updateProgress() {
+            let totalTime;
+            if (!isRunning) {
+                totalTime = WORK_TIME;
+            } else {
+                totalTime = sessionsCompleted % 4 === 0 ? LONG_BREAK : 
+                          (status.textContent.includes("Break") ? SHORT_BREAK : WORK_TIME);
+            }
+            
+            const progress = totalPathLength - (timeLeft / totalTime) * totalPathLength;
+            progressWave.style.strokeDashoffset = progress;
+            
+            // Adjust animation speed based on time left
+            const rotationSpeed = (timeLeft / totalTime) * 60;
+            progressContainer.style.animationDuration = `${rotationSpeed}s`;
+            
+            if (timeLeft <= 60) {
+                progressWave.style.stroke = 'var(--urgent)';
+                progressWave.style.strokeWidth = '5';
+            } else {
+                progressWave.style.stroke = 'var(--primary)';
+                progressWave.style.strokeWidth = '4';
+            }
+        }
+
+        function startTimer() {
+            if (isRunning) return;
+
+            isRunning = true;
+            startBtn.disabled = true;
+            resetBtn.disabled = false;
+            progressContainer.style.animationPlayState = 'running';
+            
+            if (timeLeft === WORK_TIME) {
+                status.textContent = "Focus Time";
+                startSound.play().catch(e => console.log("Audio play failed:", e));
+            }
+
+            timer = setInterval(() => {
+                if (timeLeft > 0) {
+                    timeLeft--;
+                    updateTimerDisplay();
+                    updateProgress();
+                } else {
+                    clearInterval(timer);
+                    isRunning = false;
+                    progressContainer.style.animationPlayState = 'paused';
+                    sessionsCompleted++;
+                    sessionCount.textContent = `Sessions completed: ${sessionsCompleted}`;
+                    
+                    endSound.play().catch(e => console.log("Audio play failed:", e));
+                    
+                    if (status.textContent.includes("Focus")) {
+                        if (sessionsCompleted % 4 === 0) {
+                            timeLeft = LONG_BREAK;
+                            status.textContent = "Long Break Time";
+                        } else {
+                            timeLeft = SHORT_BREAK;
+                            status.textContent = "Short Break Time";
+                        }
+                    } else {
+                        timeLeft = WORK_TIME;
+                        status.textContent = "Focus Time";
+                    }
+                    
+                    updateTimerDisplay();
+                    updateProgress();
+                    startBtn.disabled = false;
+                }
+            }, 1000);
+        }
+
+        function resetTimer() {
+            clearInterval(timer);
+            isRunning = false;
+            progressContainer.style.animationPlayState = 'paused';
+            progressContainer.style.animation = 'none';
+            void progressContainer.offsetWidth; // Trigger reflow
+            progressContainer.style.animation = 'rotate 60s linear infinite';
+            progressContainer.style.animationPlayState = 'paused';
+            
+            timeLeft = WORK_TIME;
+            sessionsCompleted = 0;
+            startBtn.disabled = false;
+            resetBtn.disabled = true;
+            status.textContent = "Ready to Focus";
+            sessionCount.textContent = "Sessions completed: 0";
+            progressWave.style.stroke = "var(--primary)";
+            updateTimerDisplay();
+            updateProgress();
+        }
+
+        startBtn.addEventListener("click", startTimer);
+        resetBtn.addEventListener("click", resetTimer);
+
+        // Initialize
+        updateTimerDisplay();
+        updateProgress();
+    </script>
+</body>
+</html>
