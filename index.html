@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Flow Pomodoro</title>
+    <link rel="icon" href="logo.png" type="image/png">
     <style>
         :root {
             --primary: #5D9CEC;
@@ -13,7 +14,7 @@
             --background: #F5F7FA;
             --text: #2C3E50;
         }
-        
+
         body {
             display: flex;
             flex-direction: column;
@@ -21,7 +22,7 @@
             justify-content: center;
             min-height: 100vh;
             margin: 0;
-            font-family: Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background: linear-gradient(135deg, #E0F7FA 0%, #B2EBF2 50%, #80DEEA 100%);
             color: var(--text);
             padding: 20px;
@@ -37,13 +38,6 @@
             max-width: 400px;
             text-align: center;
             backdrop-filter: blur(5px);
-        }
-
-        .logo {
-            width: 80px;
-            height: auto;
-            margin-bottom: 20px;
-            border-radius: 50%;
         }
 
         h1 {
@@ -69,19 +63,21 @@
         }
 
         .timer .bg-circle {
-            stroke: rgba(0, 0, 0, 0.1);
+            stroke: rgba(0, 0, 0, 0.05);
             stroke-width: 2;
             fill: none;
         }
 
-        .timer .progress-circle {
+        .timer .progress-wave {
             stroke: var(--primary);
-            stroke-width: 2.5;
+            stroke-width: 2;
             fill: none;
             stroke-linecap: round;
             stroke-dasharray: 283;
             stroke-dashoffset: 283;
-            transition: stroke-dashoffset 0.5s linear;
+            transform-origin: center;
+            transform: rotate(-90deg);
+            transition: stroke 0.3s;
         }
 
         .timer-display {
@@ -92,11 +88,12 @@
             font-size: 3.5rem;
             font-weight: 300;
             color: var(--text);
+            width: 100%;
         }
 
         .status {
             font-size: 1.2rem;
-            margin-bottom: 20px;
+            margin-bottom: 30px;
             color: var(--primary-dark);
             font-weight: 500;
             min-height: 24px;
@@ -118,16 +115,24 @@
             cursor: pointer;
             transition: all 0.3s ease;
             font-weight: 500;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
 
         button:hover {
             background-color: var(--primary-dark);
             transform: translateY(-2px);
+            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        button:active {
+            transform: translateY(0);
         }
 
         button:disabled {
             background-color: #B0BEC5;
             cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
         }
 
         .session-count {
@@ -135,16 +140,30 @@
             font-size: 0.9rem;
             color: #78909C;
         }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 30px 20px;
+            }
+
+            .timer {
+                width: 240px;
+                height: 240px;
+            }
+
+            .timer-display {
+                font-size: 3rem;
+            }
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <img src="logo.png" alt="Flow Pomodoro Logo" class="logo">
         <h1>Flow Pomodoro</h1>
         <div class="timer">
             <svg viewBox="0 0 100 100">
-                <circle class="bg-circle" cx="50" cy="50" r="45"></circle>
-                <circle class="progress-circle" cx="50" cy="50" r="45"></circle>
+                <circle class="bg-circle" cx="50" cy="50" r="45" />
+                <circle class="progress-wave" cx="50" cy="50" r="45" />
             </svg>
             <div class="timer-display" id="timer-display">25:00</div>
         </div>
@@ -160,114 +179,75 @@
         const WORK_TIME = 25 * 60;
         const SHORT_BREAK = 5 * 60;
         const LONG_BREAK = 15 * 60;
-        const LONG_BREAK_INTERVAL = 4;
 
+        let timerInterval;
         let timeLeft = WORK_TIME;
         let isRunning = false;
-        let timer;
         let sessionsCompleted = 0;
-
         const timerDisplay = document.getElementById("timer-display");
-        const statusDisplay = document.getElementById("status");
+        const status = document.getElementById("status");
         const startBtn = document.getElementById("start-btn");
         const resetBtn = document.getElementById("reset-btn");
-        const sessionCountDisplay = document.getElementById("session-count");
-        const progressCircle = document.querySelector(".progress-circle");
+        const sessionCount = document.getElementById("session-count");
+        const progressWave = document.querySelector(".progress-wave");
 
-        const startSound = new Audio("start.mp3");
-        const endSound = new Audio("end.mp3");
+        const startSound = new Audio('start.mp3');
+        const endSound = new Audio('end.mp3');
 
-        function formatTime(seconds) {
-            const mins = Math.floor(seconds / 60);
-            const secs = seconds % 60;
-            return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        let startTime;
+        let expectedEndTime;
+
+        function updateTimerDisplay() {
+            const minutes = Math.floor(timeLeft / 60);
+            const seconds = timeLeft % 60;
+            timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
         }
 
         function updateProgress() {
-            const total = isBreakTime() ? SHORT_BREAK : WORK_TIME;
-            const offset = 283 - (timeLeft / total) * 283;
-            progressCircle.style.strokeDashoffset = offset;
-        }
-
-        function updateTimerDisplay() {
-            timerDisplay.textContent = formatTime(timeLeft);
-            updateProgress();
-        }
-
-        function isBreakTime() {
-            return statusDisplay.textContent.includes("Break");
+            const totalTime = status.textContent.includes("Break")
+                ? (status.textContent.includes("Long") ? LONG_BREAK : SHORT_BREAK)
+                : WORK_TIME;
+            const progress = 283 - (timeLeft / totalTime) * 283;
+            progressWave.style.strokeDashoffset = progress;
+            progressWave.style.stroke = timeLeft <= 60 ? "var(--urgent)" : "var(--primary)";
         }
 
         function startTimer() {
-            if (!isRunning) {
-                isRunning = true;
-                startSound.play();
-                timer = setInterval(() => {
-                    if (timeLeft > 0) {
-                        timeLeft--;
-                        updateTimerDisplay();
-                    } else {
-                        clearInterval(timer);
-                        handleTimerEnd();
-                    }
-                }, 1000);
-            }
+            if (isRunning) return;
+
+            isRunning = true;
+            startBtn.disabled = true;
+            resetBtn.disabled = false;
+
+            startSound.play().catch(console.error);
+
+            startTime = performance.now();
+            expectedEndTime = startTime + timeLeft * 1000;
+
+            timerInterval = setInterval(() => {
+                const now = performance.now();
+                timeLeft = Math.max(0, Math.round((expectedEndTime - now) / 1000));
+
+                updateTimerDisplay();
+                updateProgress();
+
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    handleTimerEnd();
+                }
+            }, 1000);
         }
 
         function handleTimerEnd() {
-            endSound.play();
             isRunning = false;
+            sessionsCompleted++;
+            sessionCount.textContent = `Sessions completed: ${sessionsCompleted}`;
 
-            if (!isBreakTime()) {
-                sessionsCompleted++;
-                sessionCountDisplay.textContent = `Sessions completed: ${sessionsCompleted}`;
-                if (sessionsCompleted % LONG_BREAK_INTERVAL === 0) {
-                    timeLeft = LONG_BREAK;
-                    statusDisplay.textContent = "Long Break";
-                } else {
-                    timeLeft = SHORT_BREAK;
-                    statusDisplay.textContent = "Short Break";
-                }
+            endSound.play().catch(console.error);
+
+            if (status.textContent.includes("Focus")) {
+                timeLeft = sessionsCompleted % 4 === 0 ? LONG_BREAK : SHORT_BREAK;
+                status.textContent = sessionsCompleted % 4 === 0 ? "Long Break Time" : "Short Break Time";
             } else {
                 timeLeft = WORK_TIME;
-                statusDisplay.textContent = "Focus Time";
-            }
-
-            updateTimerDisplay();
-            if (Notification.permission === "granted") {
-                new Notification("Pomodoro Timer", {
-                    body: `Time for ${statusDisplay.textContent}!`,
-                });
-            }
-        }
-
-        function resetTimer() {
-            clearInterval(timer);
-            timeLeft = WORK_TIME;
-            isRunning = false;
-            sessionsCompleted = 0;
-            statusDisplay.textContent = "Ready to Focus";
-            sessionCountDisplay.textContent = "Sessions completed: 0";
-            updateTimerDisplay();
-        }
-
-        startBtn.addEventListener("click", () => {
-            if (!isRunning) {
-                startTimer();
-                startBtn.textContent = "Pause";
-                resetBtn.disabled = false;
-            } else {
-                clearInterval(timer);
-                isRunning = false;
-                startBtn.textContent = "Start";
-            }
-        });
-
-        resetBtn.addEventListener("click", resetTimer);
-
-        if (Notification.permission !== "granted") {
-            Notification.requestPermission();
-        }
-    </script>
-</body>
-</html>
+                status.textContent
