@@ -75,7 +75,7 @@
             stroke-dashoffset: 283;
             transform: rotate(-90deg);
             transform-origin: center;
-            transition: stroke-dashoffset 1s linear;
+            transition: stroke-dashoffset 0.1s linear;
         }
 
         .timer-display {
@@ -151,16 +151,16 @@
     </div>
 
     <script>
-        const WORK_TIME = 25 * 60; // 25 minutes
-        const SHORT_BREAK = 5 * 60; // 5 minutes
-        const LONG_BREAK = 15 * 60; // 15 minutes
+        const WORK_TIME = 25 * 60;
+        const SHORT_BREAK = 5 * 60;
+        const LONG_BREAK = 15 * 60;
+        const SESSIONS_BEFORE_LONG_BREAK = 4;
 
-        let timer;
-        let timeLeft = WORK_TIME;
+        let targetTime = 0;
         let isRunning = false;
         let sessionCount = 0;
         let isBreak = false;
-
+        let animationFrameId = null;
         const timerDisplay = document.getElementById("timer-display");
         const status = document.getElementById("status");
         const startBtn = document.getElementById("start-btn");
@@ -168,30 +168,53 @@
         const sessionCountDisplay = document.getElementById("session-count");
         const progressWave = document.querySelector(".progress-wave");
 
-        const startSound = new Audio("pomodoro.mp3");
+        const startSound = new Audio("start.mp3");
         const endSound = new Audio("end.mp3");
         const studyMusic = new Audio("studymusic.mp3");
-    studyMusic.loop = true; // Loop the music during the session
+        studyMusic.loop = true;
 
+        updateTimerDisplay();
+        setupEventListeners();
+        requestNotificationPermission();
 
         function updateTimerDisplay() {
-            const minutes = Math.floor(timeLeft / 60);
-            const seconds = timeLeft % 60;
-            timerDisplay.textContent = `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+            if (isRunning) {
+                const now = Date.now();
+                const remainingTime = Math.max(0, Math.floor((targetTime - now) / 1000));
+                updateDisplay(remainingTime);
 
-            const progress = (1 - timeLeft / (isBreak ? (sessionCount % 4 === 0 ? LONG_BREAK : SHORT_BREAK) : WORK_TIME)) * 283;
+                if (remainingTime <= 0) {
+                    handleTimerCompletion();
+                    return;
+                }
+            } else {
+                updateDisplay(getInitialTime());
+            }
+        }
+
+        function updateDisplay(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            timerDisplay.textContent = `${minutes.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+            const totalTime = isBreak ? (sessionCount % SESSIONS_BEFORE_LONG_BREAK === 0 ? LONG_BREAK : SHORT_BREAK) : WORK_TIME;
+            const progress = (1 - seconds / totalTime) * 283;
             progressWave.style.strokeDashoffset = progress;
         }
 
-        document.addEventListener("DOMContentLoaded", () => {
+        function getInitialTime() {
+            return isBreak ? (sessionCount % SESSIONS_BEFORE_LONG_BREAK === 0 ? LONG_BREAK : SHORT_BREAK) : WORK_TIME;
+        }
+
+        function setupEventListeners() {
+            startBtn.addEventListener("click", startTimer);
+            resetBtn.addEventListener("click", resetTimer);
+        }
+
+        function requestNotificationPermission() {
             if (Notification.permission === "default") {
-                Notification.requestPermission().then(permission => {
-                    if (permission !== "granted") {
-                        alert("Enable notifications to stay updated!");
-                    }
-                });
+                Notification.requestPermission();
             }
-        });
+        }
 
         function showNotification(title, body) {
             if (Notification.permission === "granted") {
@@ -206,44 +229,58 @@
             startBtn.disabled = true;
             resetBtn.disabled = false;
 
-            startSound.play().catch(e => console.log("Sound play failed:", e));
+            const now = Date.now();
+            const initialTime = getInitialTime();
+            targetTime = now + (initialTime * 1000);
 
-            timer = setInterval(() => {
-                if (timeLeft > 0) {
-                    timeLeft--;
-                    updateTimerDisplay();
-                } else {
-                    clearInterval(timer);
-                    isRunning = false;
+            playSound(startSound);
+            if (!isBreak) studyMusic.play();
+            runTimer();
+        }
 
-                    endSound.play().catch(e => console.log("Sound play failed:", e));
+        function runTimer() {
+            if (!isRunning) return;
 
-                    if (isBreak) {
-                        isBreak = false;
-                        timeLeft = WORK_TIME;
-                        status.textContent = "Focus Time";
-                        showNotification("Break Over", "Time to get back to work!");
-                    } else {
-                        sessionCount++;
-                        sessionCountDisplay.textContent = `Sessions completed: ${sessionCount}`;
-                        isBreak = true;
-                        timeLeft = sessionCount % 4 === 0 ? LONG_BREAK : SHORT_BREAK;
-                        status.textContent = sessionCount % 4 === 0 ? "Long Break" : "Short Break";
-                        showNotification(
-                            "Focus Over",
-                            sessionCount % 4 === 0 ? "Enjoy a long break!" : "Take a short break!"
-                        );
-                    }
+            updateTimerDisplay();
+            animationFrameId = requestAnimationFrame(runTimer);
+        }
 
-                    updateTimerDisplay();
-                }
-            }, 1000);
+        function handleTimerCompletion() {
+            stopTimer();
+            playSound(endSound);
+            studyMusic.pause();
+            studyMusic.currentTime = 0;
+
+            if (isBreak) {
+                isBreak = false;
+                status.textContent = "Focus Time";
+                showNotification("Break Over", "Time to get back to work!");
+            } else {
+                sessionCount++;
+                sessionCountDisplay.textContent = `Sessions completed: ${sessionCount}`;
+                isBreak = true;
+                const breakType = sessionCount % SESSIONS_BEFORE_LONG_BREAK === 0 ? "Long Break" : "Short Break";
+                status.textContent = breakType;
+                showNotification("Focus Over", `Time for a ${breakType.toLowerCase()}!`);
+            }
+
+            updateTimerDisplay();
+            startBtn.disabled = false;
+        }
+
+        function stopTimer() {
+            isRunning = false;
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
         }
 
         function resetTimer() {
-            clearInterval(timer);
-            isRunning = false;
-            timeLeft = WORK_TIME;
+            stopTimer();
+            studyMusic.pause();
+            studyMusic.currentTime = 0;
+
             sessionCount = 0;
             isBreak = false;
             status.textContent = "Ready to Focus";
@@ -253,10 +290,10 @@
             updateTimerDisplay();
         }
 
-        startBtn.addEventListener("click", startTimer);
-        resetBtn.addEventListener("click", resetTimer);
-
-        updateTimerDisplay();
+        function playSound(sound) {
+            sound.currentTime = 0;
+            sound.play().catch(e => console.error("Sound play failed:", e));
+        }
     </script>
 </body>
 </html>
