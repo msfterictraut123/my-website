@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Flow Pomodoro</title>
-    <link rel="icon" href="logo.png" type="image/png">
     <style>
         :root {
             --primary: #5D9CEC;
@@ -37,7 +36,6 @@
             width: 100%;
             max-width: 400px;
             text-align: center;
-            backdrop-filter: blur(5px);
         }
 
         h1 {
@@ -75,9 +73,9 @@
             stroke-linecap: round;
             stroke-dasharray: 283;
             stroke-dashoffset: 283;
-            transform-origin: center;
             transform: rotate(-90deg);
-            transition: stroke 0.3s;
+            transform-origin: center;
+            transition: stroke-dashoffset 1s linear;
         }
 
         .timer-display {
@@ -120,40 +118,17 @@
 
         button:hover {
             background-color: var(--primary-dark);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
-        }
-
-        button:active {
-            transform: translateY(0);
         }
 
         button:disabled {
             background-color: #B0BEC5;
             cursor: not-allowed;
-            transform: none;
-            box-shadow: none;
         }
 
         .session-count {
             margin-top: 25px;
             font-size: 0.9rem;
             color: #78909C;
-        }
-
-        @media (max-width: 480px) {
-            .container {
-                padding: 30px 20px;
-            }
-
-            .timer {
-                width: 240px;
-                height: 240px;
-            }
-
-            .timer-display {
-                font-size: 3rem;
-            }
         }
     </style>
 </head>
@@ -162,8 +137,8 @@
         <h1>Flow Pomodoro</h1>
         <div class="timer">
             <svg viewBox="0 0 100 100">
-                <circle class="bg-circle" cx="50" cy="50" r="45" />
-                <circle class="progress-wave" cx="50" cy="50" r="45" />
+                <circle class="bg-circle" cx="50" cy="50" r="45"></circle>
+                <circle class="progress-wave" cx="50" cy="50" r="45"></circle>
             </svg>
             <div class="timer-display" id="timer-display">25:00</div>
         </div>
@@ -176,40 +151,52 @@
     </div>
 
     <script>
-        const WORK_TIME = 25 * 60;
-        const SHORT_BREAK = 5 * 60;
-        const LONG_BREAK = 15 * 60;
+        const WORK_TIME = 25 * 60; // 25 minutes
+        const SHORT_BREAK = 5 * 60; // 5 minutes
+        const LONG_BREAK = 15 * 60; // 15 minutes
 
-        let timerInterval;
+        let timer;
         let timeLeft = WORK_TIME;
         let isRunning = false;
-        let sessionsCompleted = 0;
+        let sessionCount = 0;
+        let isBreak = false;
+
         const timerDisplay = document.getElementById("timer-display");
         const status = document.getElementById("status");
         const startBtn = document.getElementById("start-btn");
         const resetBtn = document.getElementById("reset-btn");
-        const sessionCount = document.getElementById("session-count");
+        const sessionCountDisplay = document.getElementById("session-count");
         const progressWave = document.querySelector(".progress-wave");
 
-        const startSound = new Audio('start.mp3');
-        const endSound = new Audio('end.mp3');
+        const startSound = new Audio("pomodoro.mp3");
+        const endSound = new Audio("end.mp3");
+        const studyMusic = new Audio("studymusic.mp3");
+    studyMusic.loop = true; // Loop the music during the session
 
-        let startTime;
-        let expectedEndTime;
 
         function updateTimerDisplay() {
             const minutes = Math.floor(timeLeft / 60);
             const seconds = timeLeft % 60;
-            timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            timerDisplay.textContent = `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+
+            const progress = (1 - timeLeft / (isBreak ? (sessionCount % 4 === 0 ? LONG_BREAK : SHORT_BREAK) : WORK_TIME)) * 283;
+            progressWave.style.strokeDashoffset = progress;
         }
 
-        function updateProgress() {
-            const totalTime = status.textContent.includes("Break")
-                ? (status.textContent.includes("Long") ? LONG_BREAK : SHORT_BREAK)
-                : WORK_TIME;
-            const progress = 283 - (timeLeft / totalTime) * 283;
-            progressWave.style.strokeDashoffset = progress;
-            progressWave.style.stroke = timeLeft <= 60 ? "var(--urgent)" : "var(--primary)";
+        document.addEventListener("DOMContentLoaded", () => {
+            if (Notification.permission === "default") {
+                Notification.requestPermission().then(permission => {
+                    if (permission !== "granted") {
+                        alert("Enable notifications to stay updated!");
+                    }
+                });
+            }
+        });
+
+        function showNotification(title, body) {
+            if (Notification.permission === "granted") {
+                new Notification(title, { body });
+            }
         }
 
         function startTimer() {
@@ -219,35 +206,57 @@
             startBtn.disabled = true;
             resetBtn.disabled = false;
 
-            startSound.play().catch(console.error);
+            startSound.play().catch(e => console.log("Sound play failed:", e));
 
-            startTime = performance.now();
-            expectedEndTime = startTime + timeLeft * 1000;
+            timer = setInterval(() => {
+                if (timeLeft > 0) {
+                    timeLeft--;
+                    updateTimerDisplay();
+                } else {
+                    clearInterval(timer);
+                    isRunning = false;
 
-            timerInterval = setInterval(() => {
-                const now = performance.now();
-                timeLeft = Math.max(0, Math.round((expectedEndTime - now) / 1000));
+                    endSound.play().catch(e => console.log("Sound play failed:", e));
 
-                updateTimerDisplay();
-                updateProgress();
+                    if (isBreak) {
+                        isBreak = false;
+                        timeLeft = WORK_TIME;
+                        status.textContent = "Focus Time";
+                        showNotification("Break Over", "Time to get back to work!");
+                    } else {
+                        sessionCount++;
+                        sessionCountDisplay.textContent = `Sessions completed: ${sessionCount}`;
+                        isBreak = true;
+                        timeLeft = sessionCount % 4 === 0 ? LONG_BREAK : SHORT_BREAK;
+                        status.textContent = sessionCount % 4 === 0 ? "Long Break" : "Short Break";
+                        showNotification(
+                            "Focus Over",
+                            sessionCount % 4 === 0 ? "Enjoy a long break!" : "Take a short break!"
+                        );
+                    }
 
-                if (timeLeft <= 0) {
-                    clearInterval(timerInterval);
-                    handleTimerEnd();
+                    updateTimerDisplay();
                 }
             }, 1000);
         }
 
-        function handleTimerEnd() {
+        function resetTimer() {
+            clearInterval(timer);
             isRunning = false;
-            sessionsCompleted++;
-            sessionCount.textContent = `Sessions completed: ${sessionsCompleted}`;
+            timeLeft = WORK_TIME;
+            sessionCount = 0;
+            isBreak = false;
+            status.textContent = "Ready to Focus";
+            sessionCountDisplay.textContent = "Sessions completed: 0";
+            startBtn.disabled = false;
+            resetBtn.disabled = true;
+            updateTimerDisplay();
+        }
 
-            endSound.play().catch(console.error);
+        startBtn.addEventListener("click", startTimer);
+        resetBtn.addEventListener("click", resetTimer);
 
-            if (status.textContent.includes("Focus")) {
-                timeLeft = sessionsCompleted % 4 === 0 ? LONG_BREAK : SHORT_BREAK;
-                status.textContent = sessionsCompleted % 4 === 0 ? "Long Break Time" : "Short Break Time";
-            } else {
-                timeLeft = WORK_TIME;
-                status.textContent
+        updateTimerDisplay();
+    </script>
+</body>
+</html>
